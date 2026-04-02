@@ -1,0 +1,24 @@
+name: Adtraction Daglig Rapport
+
+on:
+  schedule:
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+
+jobs:
+  rapport:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Koer Adtraction rapport
+        env:
+          ADTRACTION_TOKEN: ${{ secrets.ADTRACTION_TOKEN }}
+        run: python3 adtraction_updater.py | tee adtraction_rapport.txt
+
+      - name: Gem rapport
+        uses: actions/upload-artifact@v4
+        with:
+          name: adtraction-rapport-${{ github.run_number }}
+          path: adtraction_rapport.txt
+          retention-days: 30
