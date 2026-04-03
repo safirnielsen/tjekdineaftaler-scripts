@@ -4,7 +4,7 @@ from datetime import date, timedelta
 
 TOKEN = os.environ.get("ADTRACTION_TOKEN", "C9FF5AF00AC8F14025B0E8B78EAD9CADD5F3FA8A")
 MARKET = 22
-BASE = "https://api.adtraction.net/v3/partner"
+BASE = "https://api.adtraction.net"
 
 CHANNELS = {
     "2056923302": "Mobilabonnement",
@@ -20,18 +20,30 @@ def api(path, params=None):
         with urllib.request.urlopen(req, timeout=15) as r:
             return json.loads(r.read().decode())
     except urllib.error.HTTPError as e:
-        print(f"  HTTP {e.code}: {e.read().decode()[:150]}")
+        body = e.read().decode()[:200]
+        print(f"  HTTP {e.code}: {body}")
         return []
     except Exception as e:
         print(f"  Fejl: {e}")
         return []
 
 def get_programs(channel_id):
-    data = api(f"/programs/{MARKET}/", {"channelId": channel_id})
+    # Prøv v3 med marketId som query param
+    data = api("/v3/partner/programs/", {"channelId": channel_id, "marketId": MARKET})
+    if not data:
+        # Prøv v2
+        data = api("/v2/partner/programs/", {"channelId": channel_id, "marketId": MARKET})
     return [p for p in (data or []) if p.get("approvalStatus") == 1]
 
 def get_stats(channel_id, from_dt, to_dt):
-    return api("/statistics/", {"channelId": channel_id, "fromDate": from_dt, "toDate": to_dt}) or []
+    data = api("/v3/partner/statistics/", {
+        "channelId": channel_id, "fromDate": from_dt, "toDate": to_dt, "marketId": MARKET
+    })
+    if not data:
+        data = api("/v2/partner/statistics/", {
+            "channelId": channel_id, "fromDate": from_dt, "toDate": to_dt, "marketId": MARKET
+        })
+    return data or []
 
 def run_channel(channel_id, label):
     print(f"\n{'='*60}")
@@ -48,12 +60,12 @@ def run_channel(channel_id, label):
     from_dt = (today - timedelta(days=30)).strftime("%Y-%m-%d")
     to_dt = today.strftime("%Y-%m-%d")
     stats = get_stats(channel_id, from_dt, to_dt)
-    print(f"\n  Statistik seneste 30 dage:")
+    print(f"\n  Statistik seneste 30 dage ({from_dt} til {to_dt}):")
     if not stats:
         print("  Ingen data")
         return
     print(f"  {'Program':<28} {'Klik':>8} {'Konv.':>8} {'Kommission':>14}")
-    print(f"  {'-'*58}")
+    print(f"  {'-'*60}")
     totals = [0, 0, 0.0]
     for s in sorted(stats, key=lambda x: x.get("clicks", 0), reverse=True):
         name = s.get("programName", "?")[:26]
@@ -62,7 +74,7 @@ def run_channel(channel_id, label):
         comm = s.get("approvedCommission", 0) + s.get("pendingCommission", 0)
         totals[0] += clicks; totals[1] += conv; totals[2] += comm
         print(f"  {name:<28} {clicks:>8} {conv:>8} {comm:>12.2f} kr")
-    print(f"  {'-'*58}")
+    print(f"  {'-'*60}")
     print(f"  {'TOTAL':<28} {totals[0]:>8} {totals[1]:>8} {totals[2]:>12.2f} kr")
     if totals[0] > 0:
         print(f"\n  Konverteringsrate: {totals[1]/totals[0]*100:.1f}%")
